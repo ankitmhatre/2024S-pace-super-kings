@@ -1,1 +1,1 @@
-web: cd Code/backend/node-server && npm start
+web: gunicorn app:app
