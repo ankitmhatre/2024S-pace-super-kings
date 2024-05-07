@@ -11,21 +11,29 @@ const morgan = require('morgan');
 const https = require("https");
 const fs = require("fs");
 const app = express();
+
+
 const PORT = process.env.PORT || 3001;
 const securePort = process.env.SECURE_PORT || 3002;
 app.use(morgan("tiny"));
+const stringSimilarity  = require("string-similarity-js").stringSimilarity;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+app.use(bodyParser.json());
+app.use(cors());
 
+const stockData = JSON.parse(fs.readFileSync('./assets/prompts.json', 'utf-8'));
 const  {Server} = require('socket.io');
-app.use(cors())
-
 /**
  * SOCKET : Start
  */
 const server = http.createServer(app);
+
+
+
+
 
 
 
@@ -59,7 +67,18 @@ const io = new Server(server, {
 
 io.on('connection', (socket) => {
   msocket = socket;
-  console.log('New client connected');
+
+
+  socket.emit("chat_user", {
+    "type": "text", //for image add data
+    "from": "bot",
+    "title": "Hello, I am your personal assistant. How can I help you today?",
+    "timeStamp": Date.now(),
+  
+  });
+
+
+
 
   // Listen for user joining
   socket.on('join', (userId) => {
@@ -68,16 +87,16 @@ io.on('connection', (socket) => {
     socket.join(userId);
   });
 
+
+
+
+
   // Listen for incoming messages
-  socket.on('chat', (message) => {
-    
-    console.log('Received message:', message);
-     const { userId, data, type, timeStamp } = message;
-      io.to(userId).emit(userId, data);
+  socket.on('chat_bot', (message) => {
+if(message.type === "text"){
+    searchStockQuery(message.title)
 
-
-     
-  });
+}})
 
   socket.on('disconnect', () => {
     console.log('Client disconnected');
@@ -94,11 +113,55 @@ io.on('connection', (socket) => {
 
 
 
+function searchStockQuery(query) {
+  let maxScore = 0;
+  let bestMatch = null;
+
+  // Calculate Dice coefficient for each prompt
+  stockData.forEach(promptObj => {
+      const prompt = promptObj.prompt;
+      const answer = promptObj.reply;
+      const score = diceCoefficient(query.toLowerCase(), prompt.toLowerCase());
+      
+      if (score > maxScore) {
+          maxScore = score;
+          bestMatch = answer;
+      }
+  });
+
+  console.log(maxScore)
+  // If no match found with sufficient score, emit "don't know"
+  if (maxScore < 0.5) {
+      emitSocketMessage("don't know");
+  } else {
+      emitSocketMessage(bestMatch);
+  }
+}
+
+function diceCoefficient(s1, s2) {
+  return stringSimilarity(s1, s2);
+}
+
+function emitSocketMessage(message) {
+  if(msocket){
+    msocket.emit("chat_user", {
+      "type": "text", //for image add data
+      "from": "bot",
+      "title": message,
+      "timeStamp": Date.now(),
+    
+    
+    });
+messageEmitted = true; 
+  }
+}
 
 
 
-// Middleware
-app.use(bodyParser.json());
+
+
+
+
 
 // MongoDB Atlas credentials from environment variables
 const dbURI = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority`;
@@ -134,24 +197,17 @@ const User = require('./models/User');
 
 
 
+
 app.use('/profile', profileRoutes);
 app.use('/auth', authRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/stocks', stockRoutes);
 app.use('/account',checkToken,  accountRoutes);
 app.use('/extra', extraRoutes);
-app.use('/chat', chatRoutes);
+app.use('/chat',checkToken, chatRoutes);
 app.use('/orders', checkToken, ordersRoutes);
 app.get('/pattern', (req, res) => {
 
-  if(msocket)
-  msocket.emit("chat", {
-    userId: "asdnand",
-    data: "oaskdaokdok",
-    type: 'text',
-    timeStamp: Date.now()
-  });
-  
 
 
 
@@ -162,6 +218,7 @@ app.get('/pattern', (req, res) => {
 
 
 server.listen(PORT, () => {
+  // console.log(searchStockQuery("stock inves"));
   console.log(`Server running on port ${PORT}`);
 });
 
@@ -172,7 +229,7 @@ async function checkToken(req, res, next) {
 
   // Get the token from the request headers
   const token = req.headers.authorization;
-  
+
   try{
     const decoded = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
     var user = await User.findOne({email:decoded.email});

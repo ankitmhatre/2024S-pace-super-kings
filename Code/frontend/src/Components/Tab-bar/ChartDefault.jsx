@@ -38,7 +38,6 @@ const ChartDefault = () => {
 
 
     const location = useLocation();
-    const { hash, pathname, search } = location;
     const divRef = useRef(null);
     const [query, setQuery] = useState("");
     const [stockTitle, setStockTitle] = useState("Apple INC");
@@ -74,6 +73,7 @@ const ChartDefault = () => {
 
 
   useEffect(()=>{
+
     const manager = new Manager(base, {
       autoConnect: true
     });
@@ -81,18 +81,17 @@ const ChartDefault = () => {
     socket = manager.socket("/");
     socket.on("connect", () => {
       console.log("connected");
-     // const roomId = window.localStorage.getItem('email');
-      // socket.emit("join", roomId);
-
-
-    
-
-
        });
 
-     
-       socket.on('chat', (data) => {
-        console.log("data", data);
+       socket.on('chat_user', (data) => {
+        // console.log(data);
+        setTimeout(()=> {
+          
+           setMsgs([...msgs, data]);
+  
+        }, 200)
+       
+
        });
 
       
@@ -109,42 +108,7 @@ const ChartDefault = () => {
 
   },[]);
 
-  useEffect(()=>{
-    setMsgs([{
-      "type": "text", //for image add data
-      "from": "bot",
-      "title": "Hello, I am your personal assistant. How can I help you today?",
-      "timeStamp": 1647631200000,
-    
-    },{
-
-    "type": "image", //for image add data
-    "from": "bot",
-    "data": "https://www.amcharts.com/wp-content/uploads/2019/10/demo_14592_none-11.png" ,
-    "title": "Hello, I am your personal assistant. How can I help you today?",
-    "timeStamp": 1647631200000,
   
-  },
-  {
-
-    "type": "mcq", //for image add data
-    "from": "bot",
-    "options" : ["1] Head and Shoulder", "2] Double Top", "3] Triple Top","4] Hanging man", "5] None of the above",],
-    "data": "https://www.amcharts.com/wp-content/uploads/2019/10/demo_14592_none-11.png" ,
-    "title": "Which pattern do you think the chart depicts?",
-    "timeStamp": 1647631200000,
-  
-  },
-  {
-    "type": "text", //for image add data
-    "from": "user",
-    "title": "Hammer",
-    "timeStamp": 1647631200000,
-  
-  }
-  
-  ]);
-  },[])
 
 
   function sendMessage(message){
@@ -152,14 +116,25 @@ const ChartDefault = () => {
 
     const roomId = window.localStorage.getItem('email');
 
-    if(socket && roomId){
+    if(socket){
 
-      socket.emit("chat", {
+      var userSideMessage = {
+
+
+        "from": "user",
         userId: roomId,
-        data: message,
+        title: message,
         type: 'text',
         timeStamp: Date.now()
-      });
+      };
+    
+      //What factors should I consider when choosing stocks?
+
+   
+      setMsgs([...msgs, userSideMessage]);
+
+          socket.emit("chat_bot", userSideMessage);
+
 
     
   }
@@ -271,11 +246,103 @@ const handleOrderForm = async (event) => {
       }
     
       useEffect(() => {
+        //TODO: Enable to fetch stock data for the default stock
       //  autofetchStock();
         getUserAccountMoney();
         // getOrders();
       }, []);
     
+ function imageUploadChartToChat(id) {
+  saveImage(id);
+}
+
+
+const saveDivAsImage = (divId) => {
+  const div = document.getElementById(divId);
+
+  if (div) {
+    html2canvas(div).then((canvas) => {
+      // Convert canvas to data URL
+      const imageData = canvas.toDataURL('image/png');
+      // No need to decode the dataURL since we're directly using it
+  
+      // Create a new file from the data URL
+      const file = new File([dataURItoBlob(imageData)], "div_image.png", {
+          type: "image/png",
+      });
+  
+      let data = new FormData();
+      data.append('file', file);
+  
+      axios
+          .post('/chat/upload', data) // Send FormData object directly
+          .then((response) => {
+              console.log('Image uploaded:', response.data);
+
+
+
+              if(socket && response.data){
+
+                var userSideMessage =  {
+
+                  "type": "image", //for image add data
+                  "from": "bot",
+                  "data": response.data.url ,
+                  "title": "Analyzing",
+                  "timeStamp": Date.now(),
+                  
+                  };
+              
+                //What factors should I consider when choosing stocks?
+          
+             
+                setMsgs([...msgs, userSideMessage]);
+          
+                    socket.emit("chat_bot", userSideMessage);
+          
+          
+  
+            }
+
+
+
+             
+
+
+
+          })
+          .catch((error) => {
+              console.error('Error uploading image:', error);
+          });
+  });
+  
+  // Helper function to convert Data URI to Blob
+  function dataURItoBlob(dataURI) {
+      // Convert base64 to raw binary data held in a string
+      var byteString = atob(dataURI.split(',')[1]);
+      // Separate the mime component
+      var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+      // Write the bytes of the string to an ArrayBuffer
+      var ab = new ArrayBuffer(byteString.length);
+      var ia = new Uint8Array(ab);
+      for (var i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+      }
+      // Create a Blob from an ArrayBuffer
+      var blob = new Blob([ab], { type: mimeString });
+      return blob;
+  }
+  }
+};
+
+const saveImage = (id) => {
+
+  saveDivAsImage(id)
+
+};
+
+
+
       async function autofetchStock() {
         setSuggestions([]);
         setQuery("");
@@ -292,24 +359,23 @@ const handleOrderForm = async (event) => {
 
 
       const fetchStockBySearch = async (event) => {
+
         setQuery(event.target.value);
-        if (event.target.value.length < 1) {
+        if (event.target.value===undefined) {
           setSuggestions([]);
           return;
         }
         try {
-          const response2 = await fetch(
-            `https://finance.yahoo.com/_finance_doubledown/api/resource/searchassist;searchTerm=${query}`
-          );
-          const response = await response2.json();
+          const response = await axios.get(`/stocks/search2?keyword=${query}` );
+         
     
           if (response.items !== null) {
-            setSuggestions(response.items);
+            setSuggestions(response.data.items);
 
-console.log(response.items)
             // setCurrentPrice(response.items[0].close)
           }
         } catch (error) {
+
           console.error("Error fetching suggestions:", error);
         }
       };
@@ -395,7 +461,7 @@ console.log(response.items)
                       onChange={fetchStockBySearch}
                     />
 
-                    {suggestions.length > 0 ? (
+                    { suggestions!==undefined && suggestions.length > 0 ? (
                       <ul className="stockSuggestionlist-ul">
                         {suggestions.map((stock) => (
                           <li
@@ -438,7 +504,7 @@ console.log(response.items)
                       </div>
                     </div>
                     {selectedStockData && (
-                      <ChartComponent stockData={selectedStockData} />
+                      <ChartComponent stockData={selectedStockData}  imageUploadChartToChat={imageUploadChartToChat} />
                     )}
 
                     <div className="stock-button-holder">
@@ -455,6 +521,7 @@ console.log(response.items)
                         Sell
                       </button>
                     </div>
+
 
                     {showDialog && (
                       <div className="dialog">
@@ -541,3 +608,39 @@ console.log(response.items)
 }
 
 export default ChartDefault
+
+
+// [{
+//   "type": "text", //for image add data
+//   "from": "bot",
+//   "title": "Hello, I am your personal assistant. How can I help you today?",
+//   "timeStamp": 1647631200000,
+
+// },{
+
+// "type": "image", //for image add data
+// "from": "bot",
+// "data": "https://www.amcharts.com/wp-content/uploads/2019/10/demo_14592_none-11.png" ,
+// "title": "Hello, I am your personal assistant. How can I help you today?",
+// "timeStamp": 1647631200000,
+
+// },
+// {
+
+// "type": "mcq", //for image add data
+// "from": "bot",
+// "options" : ["1] Head and Shoulder", "2] Double Top", "3] Triple Top","4] Hanging man", "5] None of the above",],
+// "data": "https://www.amcharts.com/wp-content/uploads/2019/10/demo_14592_none-11.png" ,
+// "title": "Which pattern do you think the chart depicts?",
+// "timeStamp": 1647631200000,
+
+// },
+// {
+// "type": "text", //for image add data
+// "from": "user",
+// "title": "Hammer",
+// "timeStamp": 1647631200000,
+
+// }
+
+// ]

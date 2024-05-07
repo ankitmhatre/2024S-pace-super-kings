@@ -1,0 +1,11 @@
+*.DS_Store
+*.env
+*.pt
+
+**/docker-compose.yml
+**/node_modules
+
+c.sh
+*.env
+
+package-lock*

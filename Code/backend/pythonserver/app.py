@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+import requests
 from ultralytics import YOLO
 import cv2
 import numpy as np
@@ -20,16 +21,20 @@ print("Done, model loaded")
 
 @app.route('/detect_pattern', methods=['POST'])
 def detect_pattern():
-
+    image_url = request.get_json().get("image")
     # Check if an image file is present in the request
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided'})
+    if not image_url:
+        return jsonify({"error": "Missing image URL"}), 400
+    
+    try:
+        response = requests.get(image_url, stream=True)
+        response.raise_for_status()  # Raise an exception for unsuccessful downloads
+    except Exception as e:
+        return jsonify({"error": "Failed to download image"}), 400
 
-    # Read image file from request
-    image_file = request.files['image']
 
     # Convert image file to numpy array
-    image_np = np.frombuffer(image_file.read(), np.uint8)
+    image_np = np.frombuffer(response.content, np.uint8)
     
     # Decode image
     frame = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
@@ -37,6 +42,8 @@ def detect_pattern():
     cust = []
     boxes = []
     encoded_image = ""
+    patterns = []
+    boxes2 = []
 
     # Run YOLOv8 inference on the image
     results = model(frame)
@@ -50,41 +57,38 @@ def detect_pattern():
         result.save(filename='result.jpg')
         with open("result.jpg", "rb") as image_file:
             encoded_image = base64.b64encode(image_file.read())
-            print(encoded_image)
+            #print(encoded_image)
         
-    # Extract pattern information and bounding box data
-    pattern_info = {'pattern': results[0].names,
-                    'boxes' : cust 
-                    }
 
-    
 
-    for box in results[0].boxes.xyxyn:
-        label_index = int(box[-1])
-        if label_index < len(results[0].names):
-            label = str(results[0].names[label_index])
-            bounding_box = [int(coord) for coord in box[:-1]]
-            boxes.append({'label': label, 'bounding_box': bounding_box})
 
-    for box in results[0].boxes.xywhn:
-        label_index = int(box[-1])
-        if label_index < len(results[0].names):
-            label = str(results[0].names[label_index])
-            bounding_box = [int(coord) for coord in box[:-1]]
-            boxes.append({'label': label, 'bounding_box': bounding_box})
-            
-    for box in results[0].boxes.xywhn:
-        label_index = int(box[-1])
-        if label_index < len(results[0].names):
-            label = str(results[0].names[label_index])
-            bounding_box = [int(coord) for coord in box[:-1]]
-            boxes.append({'label': label, 'bounding_box': bounding_box})
+        
+        class_names = result.names  # Dictionary mapping indices to class names
+        labels = result.boxes.cls.tolist()  # List of class indices
+        boxes = result.boxes.xyxy.tolist()
+        for i, label_index in enumerate(labels):
+            label_name = class_names[int(label_index)]
+            print(f"Object {i+1}: {label_name}")
+            patterns.append({'label': label_name, 'label_index': label_index})
+        
 
+
+        for i, box in enumerate(boxes):
+            print(f"Object {i+1} bounding box: ({box[0]:.2f}, {box[1]:.2f}) - ({box[2]:.2f}, {box[3]:.2f})")
+            boxes2.append({'bounding_box': {
+                'x1': box[0],
+                'y1': box[1],
+                'x2': box[2],
+                'y2': box[3]
+            }, 'sequence': i})
+
+
+        
     # Prepare JSON response
     response = {
-        'pattern_info': pattern_info,
-        'bounding_boxes': boxes,
-        'image_data' : str(encoded_image)
+        'pattern': patterns,
+        'bounding_boxes': boxes2,
+        # 'image_data' : str(encoded_image)
     }
 
     return jsonify(response)
