@@ -24,7 +24,12 @@ import './chartdefault.css';
 
 // import ChartDefault from "../Components/Tab-bar/ChartDefault.jsx";
 import { Manager } from "socket.io-client";
-import { base } from '../../variables.js';
+import { base, imageServer } from '../../variables.js';
+
+const patternsData = require('../../assets/all_pattern.json');
+
+
+
 
 var socket = null;
 
@@ -247,7 +252,7 @@ const handleOrderForm = async (event) => {
     
       useEffect(() => {
         //TODO: Enable to fetch stock data for the default stock
-      //  autofetchStock();
+        autofetchStock();
         getUserAccountMoney();
         // getOrders();
       }, []);
@@ -277,7 +282,7 @@ const saveDivAsImage = (divId) => {
       axios
           .post('/chat/upload', data) // Send FormData object directly
           .then((response) => {
-              console.log('Image uploaded:', response.data);
+         
 
 
 
@@ -301,6 +306,81 @@ const saveDivAsImage = (divId) => {
                     socket.emit("chat_bot", userSideMessage);
           
           
+
+                    fetch(`${imageServer}/detect_pattern`, {
+  method: 'POST',
+  headers:{
+    'Content-Type': 'application/json'
+  },
+  body : JSON.stringify({
+    "image": response.data.url
+  })
+  
+                    })
+  .then((response) => response.json())
+  .then((result) => {
+
+
+    if(result.message=="detected"){
+
+      const allPatterns = ['Head and shoulders bottom', 'Head and shoulders top', 'M_Head', 'StockLine', 'Triangle', 'W_Bottom'];
+
+
+
+const answerStrings = result.pattern.map(pattern => pattern.label);
+
+
+//console.log("Select the CORRECT chart pattern from the following options:");
+answerStrings.forEach(answerString => console.log("answerString", answerString));
+
+const finalOptions = generateOptions(answerStrings, allPatterns);
+console.log(finalOptions);
+
+var msg = {
+
+"type": "mcq", //for image add data
+"from": "bot",
+"options" : finalOptions,
+"data": "https://www.amcharts.com/wp-content/uploads/2019/10/demo_14592_none-11.png" ,
+"title": "Which pattern do you think the chart depicts?",
+"timeStamp": Date.now(),
+"correctAnswers" :  answerStrings
+
+}
+setMsgs([...msgs, msg]);
+
+socket.emit("chat_bot", msg);
+
+
+
+    
+    }else{
+
+
+      var userSideMessage =  {
+
+        "type": "text", //for image add data
+        "from": "bot",
+    
+        "title": "No Pattern detected",
+        "timeStamp": Date.now(),
+        
+        };
+    
+      //What factors should I consider when choosing stocks?
+
+   
+      setMsgs([...msgs, userSideMessage]);
+
+          socket.emit("chat_bot", userSideMessage);
+
+
+
+
+    }
+  
+  })
+  .catch((error) => console.error(error))
   
             }
 
@@ -316,6 +396,32 @@ const saveDivAsImage = (divId) => {
           });
   });
   
+
+  function generateOptions(correctAnswers, allPatterns) {
+    // Filter out correct answers from all patterns
+    const incorrectPatterns = allPatterns.filter(pattern => !correctAnswers.includes(pattern));
+  
+    // Randomly select one correct answer (can be any from answers)
+    const chosenCorrectAnswer = correctAnswers[Math.floor(Math.random() * correctAnswers.length)];
+  
+    // Randomly select one incorrect option
+    const incorrectOption = incorrectPatterns.sort(() => Math.random() - 0.5).slice(0, 1)[0];  // Random sort, pick first
+  
+    // Combine chosen correct answer with incorrect option
+    const options = [{
+      text: chosenCorrectAnswer,
+      correct  :true
+    }, {
+      text: incorrectOption,
+      correct : false
+    }];
+  
+    return options;
+  }
+  
+  
+
+
   // Helper function to convert Data URI to Blob
   function dataURItoBlob(dataURI) {
       // Convert base64 to raw binary data held in a string
@@ -561,11 +667,78 @@ const saveImage = (id) => {
               <div class="col-xl-4">
                 <div class="card" id="chatscreen">
                   <div class="card-header border-0 pb-0">
-                    <h4 class="card-title mb-0">Chatbot</h4>
+                    <h4 class="card-title mb-0">   Chatbot<br /><span  style={{fontSize: "9px"}} onClick={()=>{
+setMsgs([])
+}}>
+<u>Clear</u>
+</span></h4>
+                    
                   </div>
                   <div class="card-body pt-2">
                     <div className="chat-content">
-                      <ChatScreen msgs={msgs} />
+                      <ChatScreen msgs={msgs} answerQuestion={(msg)=>{
+                   
+              if(socket){
+
+var userSideMessage =  {
+
+  "type": "text", //for image add data
+  "from": "bot",
+  "title": msg === 1 ? "correct answer " : "wrong answer, don't worry let us learn it again",
+  "timeStamp": Date.now(),
+  
+  };
+
+//What factors should I consider when choosing stocks?
+
+
+setMsgs([...msgs, userSideMessage]);
+
+    socket.emit("chat_bot", userSideMessage);
+              }
+
+
+
+
+                        
+                      }}
+                      
+                      optionInfo={(msg)=>{
+console.log(patternsData)
+                         var m = patternsData.map((value) => {
+                          return value.type === msg ? value : null;
+                         } )
+                         const matchingPattern = m.find((pattern) => pattern !== null);
+                         if(socket){
+
+var userSideMessage =  {
+
+  "type": "text", //for image add data
+  "from": "bot",
+  "title": matchingPattern.appearance,
+  "timeStamp": Date.now(),
+  
+  };
+
+//What factors should I consider when choosing stocks?
+
+
+setMsgs([...msgs, userSideMessage]);
+
+    socket.emit("chat_bot", userSideMessage);
+             
+             
+             
+             
+             
+             
+             
+             
+              }
+
+                      }}
+                      
+                       />
                     </div>
                     <form>
                       {/* <div class="mt-3 d-flex justify-content-between">
