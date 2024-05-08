@@ -30,43 +30,61 @@ const  {Server} = require('socket.io');
  * SOCKET : Start
  */
 const server = http.createServer(app);
-
-
-
-
-
+var secureServer;
+var msocket;
+var io;
 
 
 if (process.env.NODE_ENV === "production") {
-  https
-    .createServer(
-      {
-        key: fs.readFileSync(
-          "/etc/letsencrypt/live/api.investmatefinance.tech/privkey.pem"
-        ),
-         cert: fs.readFileSync('/etc/letsencrypt/live/api.investmatefinance.tech/cert.pem'),
-        ca: fs.readFileSync(
-          "/etc/letsencrypt/live/api.investmatefinance.tech/fullchain.pem"
-        ),
-      },
-      app
-    )
-    .listen(securePort, () => {
-      console.log(`Server Started at PORT: ${securePort}`);
-    });
+
+   secureServer = https
+.createServer(
+  {
+    key: fs.readFileSync(
+      "/etc/letsencrypt/live/api.investmatefinance.tech/privkey.pem"
+    ),
+     cert: fs.readFileSync('/etc/letsencrypt/live/api.investmatefinance.tech/cert.pem'),
+    ca: fs.readFileSync(
+      "/etc/letsencrypt/live/api.investmatefinance.tech/fullchain.pem"
+    ),
+  },
+  app
+)
+
+
+  io = new Server(secureServer, {
+    cors: {
+      origin: '*',
+      methods: ["GET", "POST"],
+    }
+  
+  });
+}else{
+
+  io = new Server(server, {
+    cors: {
+      origin: '*',
+      methods: ["GET", "POST"],
+    }
+  
+  });
 }
 
 
-var msocket;
-const io = new Server(server, {
-  cors: {
-    origin: ["http://localhost:3000", "https://investmatefinance.tech"]
-  }
 
-});
+
+
+
+
+
 
 io.on('connection', (socket) => {
   msocket = socket;
+
+  console.log("Client connected ")
+
+
+
 
 
   socket.emit("chat_user", {
@@ -107,6 +125,7 @@ if(message.type === "text"){
 });
 
 
+
 /**
  * Socket end
  */
@@ -131,8 +150,8 @@ function searchStockQuery(query) {
 
   console.log(maxScore)
   // If no match found with sufficient score, emit "don't know"
-  if (maxScore < 0.5) {
-      emitSocketMessage("don't know");
+  if (maxScore < 0.3) {
+      //emitSocketMessage("don't know");
   } else {
       emitSocketMessage(bestMatch);
   }
@@ -167,7 +186,7 @@ messageEmitted = true;
 const dbURI = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority`;
 
 // Connect to MongoDB Atlas
-mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(dbURI)
 .then(() => {
     console.log('Connected to MongoDB');
   })
@@ -217,10 +236,22 @@ app.get('/pattern', (req, res) => {
 // Start the server
 
 
-server.listen(PORT, () => {
-  // console.log(searchStockQuery("stock inves"));
-  console.log(`Server running on port ${PORT}`);
-});
+
+
+if (process.env.NODE_ENV === "production") {
+ secureServer
+    .listen(securePort, () => {
+      console.log(`Server Started at PORT: ${securePort}`);
+    });
+    
+}else{
+  server.listen(PORT, () => {
+    // console.log(searchStockQuery("stock inves"));
+    console.log(`Server running on port ${PORT}`);
+  });
+  
+}
+
 
 
 
